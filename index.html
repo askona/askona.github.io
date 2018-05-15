@@ -1,0 +1,428 @@
+<!doctype html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<title>Pixi</title>
+	<style>
+		@font-face {
+			font-family: "DRAguSansBlack";
+			src: url("fonts/DRAguSans-Black.ttf") format('woff');
+		}
+
+		.text {
+			font-family: DRAguSansBlack;
+		}
+	</style>
+</head>
+<script src="pixi/pixi.js"></script>
+<script src="pixi/pixi-spine.js"></script>
+
+<body>
+	<span class="text"></span>
+	<script type="text/javascript">
+		let type = "WebGL"
+		if (!PIXI.utils.isWebGLSupported()) {
+			type = "canvas"
+		}
+
+		PIXI.utils.sayHello(type)
+
+		let app = new PIXI.Application({
+			width: 1097,
+			height: 1920,
+			antialias: true, // default: false
+		});
+
+		var gRedCharacter;
+		var gPlayPrice = 60;
+
+		var gCurrentGameState = 0; // 0-not started, 1-inprogress
+		var gCurrentCardTarget = 'bow';
+		var gUserCoins = 200;
+		var gGameField = [{
+			type: 'bonfire', // 'bow', 'leaf'
+			state: 0, // 0-full, 1-partly, 2-scratched
+		}];
+
+		PIXI.loader
+			.add([
+				'assets/magic_forest_bg.jpg',
+				'assets/magic_forest_winner_frame.png',
+				'assets/magic_forest_scratch_frame_big.png',
+				'assets/magic_forest_bonfire.png',
+				'assets/magic_forest_frame.png',
+				'assets/magic_forest_scratch_frame.png',
+				'assets/magic_forest_win_up_to_100.png',
+				'assets/magic_forest_frame_for_text.png',
+				'assets/magic_forest_frame1.png',
+				'assets/magic_forest_frame2.png',
+				'assets/magic_forest_question_icon.png',
+				'assets/magic_forest_button.png',
+				'assets/magic_forest_coin_icon_small.png'
+			])
+			.add('redChar', 'assets/red.json')
+			.load(setup);
+
+
+		function setup(loader, res) {
+
+			createGameBg();
+			createRedCharacter(res);
+			createGameMenu();
+		}
+
+
+		//----------------------------------------------------------------------
+		function createGameBg(loader, res) {
+
+			let background = createAndAddSprite('magic_forest_bg.jpg');
+			background.position.set(-152, 0);
+
+			let wood = createAndAddSprite('magic_forest_winner_frame.png');
+			wood.position.set(530, 130);
+
+			createTexts();
+
+			createScratchableGameFields();
+		}
+		//----------------------------------------------------------------------
+		function createRedCharacter(res) {
+			var redAnim = new PIXI.spine.Spine(res.redChar.spineData);
+			if (redAnim.state.hasAnimation('red_idle_loop')) {
+				redAnim.state.setAnimation(0, 'red_idle_loop', true);
+			}
+			redAnim.position.set(310, 610);
+			app.stage.addChild(redAnim);
+
+		}
+
+
+		//----------------------------------------------------------------------
+		function createAndAddSprite(filename) {
+			let sp = new PIXI.Sprite(PIXI.loader.resources['assets/' + filename].texture);
+			app.stage.addChild(sp);
+			return sp;
+		}
+
+		//----------------------------------------------------------------------
+		function createSprite(filename) {
+			let sp = new PIXI.Sprite(PIXI.loader.resources['assets/' + filename].texture);
+			return sp;
+		}
+
+
+		function createScratchableGameFields() {
+			/*let scratchBig = createAndAddSprite('magic_forest_scratch_frame_big.png');
+			scratchBig.position.set(640, 340);
+			scratchBig.interactive = true;
+
+
+			scratchBig.on('touchmove', (event) => {
+			  let stt = performance.now();
+			      let part = new PIXI.Sprite(PIXI.loader.resources['assets/magic_forest_frame.png'].texture);
+			      part.position.set(0, 0);
+
+			      let mask = new PIXI.Graphics();
+			      mask.beginFill(0x000000);
+			      mask.drawCircle(0, 0, 50);
+			      mask.endFill();
+			      mask.position.copy(event.data.global);
+
+			      part.mask = mask;
+
+			      scratchBig.addChild(part);
+			      app.stage.addChild(mask);
+			      let diff = performance.now() - stt;
+			      console.log(diff);
+			  });*/
+
+			let offset = 335;
+			createOneGameField(new PIXI.Point(72, 1228));
+			createOneGameField(new PIXI.Point(72 + offset, 1228));
+			createOneGameField(new PIXI.Point(72 + 2 * offset, 1228));
+			createOneGameField(new PIXI.Point(72, 1228 + offset));
+			createOneGameField(new PIXI.Point(72 + offset, 1228 + offset));
+			createOneGameField(new PIXI.Point(72 + 2 * offset, 1228 + offset));
+		}
+
+		var gBrushSize = 50;
+
+		//*************************************************************
+		function createOneGameField(position, cardType) {
+			let scratch = createAndAddSprite('magic_forest_scratch_frame.png');
+			scratch.position.copy(position);
+			scratch.interactive = true;
+
+			let pointsMoved = [];
+			scratch.on('mousemove', (event) => {
+
+				if (event.data.global.x < scratch.position.x ||
+						event.data.global.x > scratch.position.x + scratch.width ||
+						event.data.global.y < scratch.position.y ||
+						event.data.global.y > scratch.position.y + scratch.height
+					)
+					return;
+
+
+				let stt = performance.now();
+				let frame = new PIXI.Sprite(PIXI.loader.resources['assets/magic_forest_frame.png'].texture);
+				frame.position.copy(scratch.position)
+
+				let mask = new PIXI.Graphics();
+				mask.beginFill(0x000000);
+				mask.drawCircle(0, 0, gBrushSize);
+				mask.endFill();
+				mask.position.copy(event.data.global);
+				frame.mask = mask;
+
+
+				pointsMoved.push(new PIXI.Point(event.data.global.x, event.data.global.y));
+
+				let square = calculateSquareWithPoints(pointsMoved);
+
+				if (square > 9) {
+					frame.mask = null;
+					app.stage.addChild(frame);
+					scratch.destroy();
+					return;
+				}
+
+				app.stage.addChild(frame);
+				app.stage.addChild(mask);
+
+				let diff = performance.now() - stt;
+			});
+
+		}
+
+		function checkGameStatus() {
+			let WinTable = {
+				'bow' : 30,
+				'leaf' : 35,
+				'rope': 50
+			}
+
+			for (let f of gGameField) {
+				if (f.type === gCurrentCardTarget) {
+					gUserCoins += WinTable[f.type];
+				}
+			}
+		}
+//*************************************************************
+		function finishGame() {
+			playGameAnimStart = performance.now();
+			gCurrentGameState = 'menu-fading';
+			requestAnimationFrame(endPopupAnimation);
+		}
+
+//*************************************************************
+		function createTexts() {
+			let titleText = createAndAddSprite('magic_forest_win_up_to_100.png');
+			titleText.anchor.set(0.5);
+			titleText.position.set(app.screen.width / 2, 100);
+
+			let explainTextBg = createAndAddSprite('magic_forest_frame_for_text.png');
+			explainTextBg.position.set(41, 1041);
+
+			//TODO adjust style
+			let style = new PIXI.TextStyle({
+				fontFamily: "DRAguSansBlack",
+				fontSize: 52,
+				fill: 'red'
+			});
+
+			let explainTextp1 = new PIXI.Text("MATCH THE WINNER", style);
+			explainTextp1.position.set(12, 24);
+			explainTextBg.addChild(explainTextp1);
+
+			let explainTextp2 = new PIXI.Text("AND WIN A PRIZE", style);
+			explainTextp2.position.set(550, 24);
+			explainTextBg.addChild(explainTextp2);
+
+			//_debugMakeSpriteMovable(explainTextp2 );
+
+		}
+//*************************************************************
+		function calculateSquareWithPoints(pointsArr) {
+			let selectedPoints = [];
+			let inRadiusPoints = [];
+			for (let p = 0; p < pointsArr.length; p++) {
+				for (let k = p + 1; k < pointsArr.length; k++) {
+					let p1 = pointsArr[p];
+					let p2 = pointsArr[k];
+					if (inRadiusPoints.indexOf(p2) > -1 ||
+					 		inRadiusPoints.indexOf(p1) > -1)
+						continue;
+
+					let d = dist(p1, p2);
+					if (selectedPoints.indexOf(p1) < 0)
+						selectedPoints.push(p1);
+
+					if (d < gBrushSize)
+						inRadiusPoints.push(p2);
+
+				}
+			}
+			return selectedPoints.length;
+		}
+//*************************************************************
+		function dist(p1, p2) {
+			return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) );
+		}
+
+
+
+		let blackout;
+		let topMenuContainer;
+		let bottomMenuContainer;
+//*************************************************************
+		function createGameMenu(result) {
+			topMenuContainer = new PIXI.Container();
+			bottomMenuContainer = new PIXI.Container();
+
+
+			blackout = new PIXI.Graphics();
+			blackout.beginFill(0x000000);
+			blackout.alpha = 0.4;
+			blackout.interactive = true;
+			blackout.drawRect(0, 0, app.screen.width, app.screen.height);
+			blackout.endFill();
+			app.stage.addChild(blackout);
+
+			let topYouWinPopup = createSprite('magic_forest_frame1.png');
+			topYouWinPopup.anchor.set(0.5);
+			topYouWinPopup.position.set(app.screen.width / 2, 200);
+			topMenuContainer.addChild(topYouWinPopup);
+
+
+
+			/* let txt = new PIXI.Text("Play for 60", startButtonTextStyle);
+			startButtonText.name = 'startButtonText';
+			startButtonText.position.set(371, 238);
+			startBarGroup.addChild(startButtonText);*/
+			//topMenuContainer.position.set(app.screen.width/2);
+
+
+			let bottomPopup = createSprite('magic_forest_frame2.png');
+			//bottomPopup.anchor.set(0.5);
+			bottomPopup.position.set(0, app.screen.height - bottomPopup.height + 5)
+			bottomMenuContainer.addChild(bottomPopup);
+
+			let bottomQuestionIcon = createSprite('magic_forest_question_icon.png');
+			bottomPopup.addChild(bottomQuestionIcon);
+			bottomQuestionIcon.position.set(340, 70);
+
+			//TODO adjust style
+			let howToPlayStyle = new PIXI.TextStyle({
+				fontFamily: "DRAguSansBlack",
+				fontSize: 72,
+				fill: 'orange'
+			});
+
+			let howToPlayTxt = new PIXI.Text("How to play", howToPlayStyle);
+			howToPlayTxt.position.set(430, 70);
+			bottomPopup.addChild(howToPlayTxt);
+
+			let playBtn = createSprite('magic_forest_button.png');
+			playBtn.anchor.set(0.5);
+			playBtn.position.set(bottomPopup.width / 2, bottomPopup.height / 1.3);
+			playBtn.interactive = true;
+			bottomPopup.addChild(playBtn);
+
+			//TODO adjust style
+			let playForStyle = new PIXI.TextStyle({
+				fontFamily: "DRAguSansBlack",
+				fontSize: 72,
+				fill: 'white'
+			});
+
+			let playForText = new PIXI.Text("Play for " + gPlayPrice, playForStyle);
+			playForText.position.set(-40, -20);
+			playForText.anchor.set(0.5);
+			playBtn.addChild(playForText);
+
+			let playForCoinIcon = createSprite('magic_forest_coin_icon_small.png');
+			playForCoinIcon.anchor.set(0.5);
+			playForCoinIcon.position.set(180, -15);
+			playBtn.addChild(playForCoinIcon);
+
+			playBtn.on('pointerdown', (event) => {
+				playBtn.interactive	= false;
+				startGame();
+			});
+
+			app.stage.addChild(topMenuContainer);
+			app.stage.addChild(bottomMenuContainer);
+
+		}
+
+
+		function startGame() {
+
+			gCurrentGameState = 1;
+
+			gUserCoins -= gPlayPrice;
+
+			playGameAnimStart = performance.now();
+			gCurrentGameState = 'menu-fading';
+			requestAnimationFrame(startPopupAnimation);
+
+
+		}
+
+
+
+		let playGameAnimStart;
+
+		function startPopupAnimation(time) {
+
+
+			let progress = 2 * (time - playGameAnimStart) / (1000);
+			console.log(progress);
+
+			if (progress > 1) {
+				progress = 1;
+				gCurrentGameState = 'playing';
+			} else {
+				requestAnimationFrame(startPopupAnimation);
+			}
+
+			blackout.alpha = (1 - progress) * 0.4;
+			topMenuContainer.position.y = - (progress) * 500;
+			bottomMenuContainer.position.y = (progress) * 500;
+		}
+
+		function endPopupAnimation(time) {
+
+
+			let progress = 2 * (time - playGameAnimStart) / (1000);
+			console.log(progress);
+
+			if (progress > 1) {
+				progress = 1;
+				gCurrentGameState = 'finished';
+			} else {
+				requestAnimationFrame(startPopupAnimation);
+			}
+
+			blackout.alpha = (progress - 1) * 0.4;
+			topMenuContainer.position.y = + (progress - 1) * 500;
+			bottomMenuContainer.position.y = - (progress - 1) * 500;
+		}
+
+
+
+		function __debugMakeSpriteMovable(sprite) {
+			sprite.interactive = true;
+			sprite.on('touchmove', (event) => {
+				sprite.position.copy(event.data.global);
+				console.log(sprite.position)
+			});
+		}
+
+		document.body.appendChild(app.view);
+	</script>
+</body>
+
+</html>
